@@ -1,5 +1,9 @@
 # `gptcommit`
 
+For PAI devs, just set `api_base=http://100.64.xx.xx:18888/api/v1/complete`, and enjoy it.
+
+---
+
 [![Github Contributors](https://img.shields.io/github/contributors/zurawiki/gptcommit.svg)](https://github.com/zurawiki/gptcommit/graphs/contributors)
 [![Github Stars](https://img.shields.io/github/stars/zurawiki/gptcommit.svg)](https://github.com/zurawiki/gptcommit/stargazers)
 [![CI](https://github.com/zurawiki/gptcommit/actions/workflows/ci.yml/badge.svg)](https://github.com/zurawiki/gptcommit/actions/workflows/ci.yml)
@@ -21,7 +25,7 @@ See [announcement blog post](https://zura.wiki/post/never-write-a-commit-message
 1. Install this tool locally with `cargo` (recommended).
 
 ```sh
-cargo install --locked gptcommit
+cargo install --git https://github.com/ferstar/gptcommit.git
 ```
 
 or on macOS, use homebrew

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Ok, Result};
+use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::Debug;
 use std::time::Duration;
@@ -21,8 +22,30 @@ use async_openai::{
 use super::llm_client::LlmClient;
 const COMPLETION_TOKEN_LIMIT: usize = 100;
 
+#[derive(Serialize)]
+struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct RequestBody {
+    messages: Vec<Message>,
+    user_id: u32,
+    app: String,
+    ratio: u32,
+}
+
+#[derive(Deserialize)]
+struct ResponseBody {
+    #[allow(dead_code)]
+    role: String,
+    content: String,
+}
+
 pub(crate) struct OpenAIClient {
     model: String,
+    api_base: String,
     client: Client<OpenAIConfig>,
 }
 
@@ -30,6 +53,7 @@ impl Debug for OpenAIClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OpenAIClient")
             .field("model", &self.model)
+            .field("api_base", &self.api_base)
             .finish()
     }
 }
@@ -37,13 +61,13 @@ impl Debug for OpenAIClient {
 impl OpenAIClient {
     pub(crate) fn new(settings: OpenAISettings) -> Result<Self, anyhow::Error> {
         let api_key = settings.api_key.unwrap_or_default();
-        if api_key.is_empty() {
-            bail!("No OpenAI API key found. Please provide a valid API key.");
-        }
+        // if api_key.is_empty() {
+        //     bail!("No OpenAI API key found. Please provide a valid API key.");
+        // }
         let model = settings.model.unwrap_or_default();
-        if model.is_empty() {
-            bail!("No OpenAI model configured. Please choose a valid model to use.");
-        }
+        // if model.is_empty() {
+        //     bail!("No OpenAI model configured. Please choose a valid model to use.");
+        // }
 
         let mut openai_config = OpenAIConfig::new().with_api_key(api_key);
 
@@ -86,8 +110,13 @@ impl OpenAIClient {
         }
         Ok(Self {
             model,
+            api_base,
             client: openai_client,
         })
+    }
+
+    pub(crate) fn is_private_base_url(url: &str) -> bool {
+        !url.is_empty() && url.to_lowercase().starts_with("http://100.64.")
     }
 
     pub(crate) fn should_use_chat_completion(model: &str) -> bool {
@@ -169,6 +198,28 @@ impl OpenAIClient {
 
         bail!("No completion results returned from OpenAI.")
     }
+    pub(crate) async fn get_private_completions(&self, prompt: &str) -> Result<String> {
+        let client = reqwest::Client::new();
+        let message = Message {
+            role: "assistant".to_string(),
+            content: prompt.to_string(),
+        };
+        let body = RequestBody {
+            messages: vec![message],
+            user_id: 9527,
+            app: "gptcommit".to_string(),
+            ratio: 1,
+        };
+        debug!("Sending request to private endpoint:{:?}", prompt);
+        let response: ResponseBody = client
+            .post(&self.api_base)
+            .json(&body)
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(response.content)
+    }
 }
 
 #[async_trait]
@@ -176,7 +227,9 @@ impl LlmClient for OpenAIClient {
     /// Sends a request to OpenAI's API to get a text completion.
     /// It takes a prompt as input, and returns the completion.
     async fn completions(&self, prompt: &str) -> Result<String> {
-        let completion = if OpenAIClient::should_use_chat_completion(&self.model) {
+        let completion = if OpenAIClient::is_private_base_url(&self.api_base) {
+            self.get_private_completions(prompt).await?
+        } else if OpenAIClient::should_use_chat_completion(&self.model) {
             self.get_chat_completions(prompt).await?
         } else {
             self.get_completions(prompt).await?
